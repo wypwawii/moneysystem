@@ -18,7 +18,7 @@ type User struct {
 	ID      string
 	Name    string
 	Balance float64
-	mu      sync.Mutex
+	mu      sync.RWMutex
 }
 
 func (u *User) Deposit(amount float64) {
@@ -47,7 +47,9 @@ func (u *User) Withdraw(amount float64) error {
 }
 
 func (u *User) Print() {
+	u.mu.RLock()
 	logInfo("Пользователь %s имеет на балансе %f", u.Name, u.Balance)
+	u.mu.RUnlock()
 }
 
 func NewUser(id string, name string, balance float64) *User {
@@ -144,9 +146,9 @@ func main() {
 
 	ps.AddTransaction(Transaction{FromID: user1.ID, ToID: user2.ID, Amount: 200})
 	ps.AddTransaction(Transaction{FromID: user2.ID, ToID: user1.ID, Amount: 50})
+	ps.AddTransaction(Transaction{FromID: user1.ID, ToID: user2.ID, Amount: 5500})
 	ps.AddTransaction(Transaction{FromID: user1.ID, ToID: user2.ID, Amount: 30})
 	ps.AddTransaction(Transaction{FromID: user2.ID, ToID: user1.ID, Amount: 80})
-	ps.AddTransaction(Transaction{FromID: user1.ID, ToID: user2.ID, Amount: 5500})
 	ps.AddTransaction(Transaction{FromID: user2.ID, ToID: user1.ID, Amount: 50})
 
 	var wg sync.WaitGroup
