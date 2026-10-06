@@ -1,6 +1,18 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"sync"
+	"time"
+)
+
+func logInfo(format string, a ...any) {
+	fmt.Printf("\033[34m(INFO) %s\033[0m\n", fmt.Sprintf(format, a...))
+}
+
+func logError(format string, a ...any) {
+	fmt.Printf("\033[31m(ERROR) %s\033[0m\n", fmt.Sprintf(format, a...))
+}
 
 type User struct {
 	ID      string
@@ -10,20 +22,26 @@ type User struct {
 
 func (u *User) Deposit(amount float64) {
 	u.Balance += amount
+
+	// Симуляция долгой операции
+	time.Sleep(time.Second)
 }
 
 func (u *User) Withdraw(amount float64) error {
 	if u.Balance < amount {
-		return fmt.Errorf("Баланс меньше чем сумма перевода")
+		return fmt.Errorf("balance is less than amount to withdraw")
 	}
 
 	u.Balance -= amount
+
+	// Симуляция долгой операции
+	time.Sleep(time.Second)
 
 	return nil
 }
 
 func (u *User) Print() {
-	fmt.Printf("Пользователь %s имеет на балансе %f\n", u.Name, u.Balance)
+	logInfo("Пользователь %s имеет на балансе %f", u.Name, u.Balance)
 }
 
 func NewUser(id string, name string, balance float64) *User {
@@ -34,6 +52,10 @@ type Transaction struct {
 	FromID string
 	ToID   string
 	Amount float64
+}
+
+func (t *Transaction) Name() string {
+	return fmt.Sprintf("%s -> %s (%f)", t.FromID, t.ToID, t.Amount)
 }
 
 type PaymentSystem struct {
@@ -56,12 +78,17 @@ func (ps *PaymentSystem) GetUser(uid string) *User {
 		}
 	}
 
+	// Симуляция долгой операции
+	time.Sleep(time.Second)
+
 	return nil
 }
 
 func (ps *PaymentSystem) ProcessTransaction(t Transaction) error {
 	fromUser := ps.GetUser(t.FromID)
 	toUser := ps.GetUser(t.ToID)
+
+	logInfo("Обработка транзакции [%s] в процессе...", t.Name())
 
 	if fromUser == nil {
 		return fmt.Errorf("Пользователь FromID (%s) не найден!", t.FromID)
@@ -77,7 +104,21 @@ func (ps *PaymentSystem) ProcessTransaction(t Transaction) error {
 
 	toUser.Deposit(t.Amount)
 
+	logInfo("Завершилась обработка транзакции [%s]", t.Name())
+
 	return nil
+}
+
+func (ps *PaymentSystem) Worker(ch <-chan Transaction, wg *sync.WaitGroup) {
+	for t := range ch {
+		if err := ps.ProcessTransaction(t); err != nil {
+			logError("При попытки обработки транзакции [%s] произошла ошибка: %s", t.Name(), err.Error())
+		}
+
+	}
+
+	wg.Done()
+
 }
 
 func NewPaymentSystem() *PaymentSystem {
@@ -97,12 +138,26 @@ func main() {
 
 	ps.AddTransaction(Transaction{FromID: user1.ID, ToID: user2.ID, Amount: 200})
 	ps.AddTransaction(Transaction{FromID: user2.ID, ToID: user1.ID, Amount: 50})
+	ps.AddTransaction(Transaction{FromID: user1.ID, ToID: user2.ID, Amount: 30})
+	ps.AddTransaction(Transaction{FromID: user2.ID, ToID: user1.ID, Amount: 80})
+	ps.AddTransaction(Transaction{FromID: user1.ID, ToID: user2.ID, Amount: 5500})
+	ps.AddTransaction(Transaction{FromID: user2.ID, ToID: user1.ID, Amount: 50})
+
+	var wg sync.WaitGroup
+	ch := make(chan Transaction, len(ps.TransactionQueue))
+
+	for range 3 {
+		wg.Add(1)
+		go ps.Worker(ch, &wg)
+	}
 
 	for _, t := range ps.TransactionQueue {
-		if err := ps.ProcessTransaction(t); err != nil {
-			fmt.Println(err)
-		}
+		ch <- t
 	}
+
+	close(ch)
+
+	wg.Wait()
 
 	user1.Print()
 	user2.Print()
