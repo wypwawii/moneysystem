@@ -18,17 +18,22 @@ type User struct {
 	ID      string
 	Name    string
 	Balance float64
+	mu      sync.Mutex
 }
 
 func (u *User) Deposit(amount float64) {
+	u.mu.Lock()
 	u.Balance += amount
 
 	// Симуляция долгой операции
 	time.Sleep(time.Second)
+	u.mu.Unlock()
 }
 
 func (u *User) Withdraw(amount float64) error {
+	u.mu.Lock()
 	if u.Balance < amount {
+		u.mu.Unlock()
 		return fmt.Errorf("balance is less than amount to withdraw")
 	}
 
@@ -37,6 +42,7 @@ func (u *User) Withdraw(amount float64) error {
 	// Симуляция долгой операции
 	time.Sleep(time.Second)
 
+	u.mu.Unlock()
 	return nil
 }
 
@@ -110,14 +116,14 @@ func (ps *PaymentSystem) ProcessTransaction(t Transaction) error {
 }
 
 func (ps *PaymentSystem) Worker(ch <-chan Transaction, wg *sync.WaitGroup) {
+	defer wg.Done()
+
 	for t := range ch {
 		if err := ps.ProcessTransaction(t); err != nil {
 			logError("При попытки обработки транзакции [%s] произошла ошибка: %s", t.Name(), err.Error())
 		}
 
 	}
-
-	wg.Done()
 
 }
 
